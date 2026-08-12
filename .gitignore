@@ -1,0 +1,7 @@
+*.rar
+*.zip
+*.7z
+~$*.docx
+~$*.xlsx
+Thumbs.db
+.DS_Store
