@@ -1,3 +1,13 @@
+
+def extract_use_case_name(md_content):
+    m = re.search(r"\|\s*Nama Use Case\s*\|\s*([^|]+)\|", md_content, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"\*\*Tabel\s*1:\s*Deskripsi\s*(?:Detail\s*)?(?:Use\s*Case\s*)?([^*]+)\*\*", md_content, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return "Use Case Specification"
+
 """
 Markdown to Docx Converter Engine
 Version: 1.0.12
@@ -347,7 +357,7 @@ def add_cell_formatted_content(doc, cell, text, is_special_numbered_row=False, a
         apply_paragraph_formatting(p, line_spacing=1.5, align=align)
         parse_and_append_runs(p, text, default_bold=default_bold)
 
-def append_blocks_to_docx(doc, blocks, temp_dir, initial_tabel_counter=10, initial_gambar_counter=2):
+def append_blocks_to_docx(doc, blocks, temp_dir, initial_tabel_counter=10, initial_gambar_counter=2, use_case_name="Use Case Specification"):
     """Append structured markdown blocks into docx document with native Word SEQ field captions and native numPr list items."""
     special_fields = [
         'Pre-condition', 'Post-condition', 'Integrasi', 
@@ -362,20 +372,23 @@ def append_blocks_to_docx(doc, blocks, temp_dir, initial_tabel_counter=10, initi
         btype = block['type']
         
         if btype == 'heading':
-            level = block['level']
-            title = block['title']
-            style_level = level + 3
-            style_name = f"Heading {style_level}" if style_level <= 9 else "Heading 5"
-            p = doc.add_paragraph(title, style=style_name)
-            for r in p.runs:
-                apply_run_formatting(r, font_name="Arial", color_rgb=(0,0,0))
-            
-            # Check if next block is caption OR image/plantuml -> add enter space
-            if b_idx + 1 < len(blocks):
-                next_btype = blocks[b_idx + 1]['type']
-                if next_btype in ['caption', 'plantuml', 'image']:
-                    p_enter = doc.add_paragraph()
-                    apply_paragraph_formatting(p_enter, line_spacing=1.5)
+            raw_title = block.get('raw_title', '')
+            clean_title = block['title']
+            if "deskripsi use case" in raw_title.lower() or raw_title.startswith("1"):
+                style_name = "Heading 4"
+                heading_text = use_case_name
+                p = doc.add_paragraph(heading_text, style=style_name)
+                for r in p.runs:
+                    apply_run_formatting(r, font_name="Arial", color_rgb=(0,0,0))
+            else:
+                style_name = "Heading 5"
+                heading_text = clean_title
+                p = doc.add_paragraph(heading_text, style=style_name)
+                for r in p.runs:
+                    apply_run_formatting(r, font_name="Arial", color_rgb=(0,0,0))
+                # Heading 5 is always followed by enter paragraph space
+                p_enter = doc.add_paragraph()
+                apply_paragraph_formatting(p_enter, line_spacing=1.5)
         
         elif btype == 'caption':
             raw_text = block['text']
@@ -503,36 +516,14 @@ def convert_md_to_docx(input_path, template_path, output_dir):
             with open(md_file, 'r', encoding='utf-8-sig') as f:
                 md_content = f.read()
             
+            use_case_name = extract_use_case_name(md_content)
             blocks = parse_markdown_content(md_content)
             doc = docx.Document(template_path)
             
             # Check if Detail Spesifikasi Heading 2 is already present at the end of the template
-            has_detail_spec = False
-            for p in doc.paragraphs:
-                if p.style.name == 'Heading 2' and p.text.strip() == 'Detail Spesifikasi':
-                    has_detail_spec = True
-                    break
-            
-            if not has_detail_spec:
-                p_spec = doc.add_paragraph()
-                p_spec.style = 'Heading 2'
-                r_spec = p_spec.add_run("Detail Spesifikasi")
-                apply_run_formatting(r_spec, font_name="Arial", color_rgb=(0,0,0))
-                apply_paragraph_formatting(p_spec, line_spacing=1.5)
-            
-            # Add Heading 3: Use Case Title
-            base_name = os.path.splitext(os.path.basename(md_file))[0]
-            clean_name = re.sub(r'^\d+\.\s*', '', base_name).replace('_', ' ')
-            
-            p_title = doc.add_paragraph()
-            p_title.style = 'Heading 3'
-            r_title = p_title.add_run(clean_name)
-            apply_run_formatting(r_title, font_name="Arial", color_rgb=(0,0,0))
-            apply_paragraph_formatting(p_title, line_spacing=1.5)
-            
             max_tabel, max_gambar = get_body_caption_max_numbers(doc)
             
-            append_blocks_to_docx(doc, blocks, temp_dir, initial_tabel_counter=max_tabel, initial_gambar_counter=max_gambar)
+            append_blocks_to_docx(doc, blocks, temp_dir, initial_tabel_counter=max_tabel, initial_gambar_counter=max_gambar, use_case_name=use_case_name)
             
             base_name = os.path.splitext(os.path.basename(md_file))[0]
             clean_name = re.sub(r'^\d+\.\s*', '', base_name)
